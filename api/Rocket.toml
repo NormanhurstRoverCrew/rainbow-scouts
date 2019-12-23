@@ -1,0 +1,2 @@
+[development.databases.primary_db]
+url = "mongodb://localhost:27017/rainbow_development"
