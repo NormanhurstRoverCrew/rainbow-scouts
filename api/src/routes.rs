@@ -1,11 +1,11 @@
-use rocket::response::content;
-use rocket::State;
-use rocket::{get, post};
+use rocket::{get, post, response::content, State};
 
 use juniper::RootNode;
 
-use crate::db::PrimaryDb;
-use crate::graphql::schema::{Context, MutationRoot, QueryRoot};
+use crate::{
+	db::PrimaryDb,
+	graphql::{context::Context, mutation_root::MutationRoot, query_root::QueryRoot},
+};
 
 pub type Schema = RootNode<'static, QueryRoot, MutationRoot>;
 
@@ -20,15 +20,14 @@ pub fn graphiql() -> content::Html<String> { juniper_rocket::graphiql_source("/g
 #[get("/graphql?<request>")]
 
 pub fn get_graphql_handler(
-	context: PrimaryDb,
-	request: juniper_rocket::GraphQLRequest,
-	schema: State<Schema>,
+	context : PrimaryDb,
+	request : juniper_rocket::GraphQLRequest,
+	schema : State<Schema>,
 ) -> juniper_rocket::GraphQLResponse {
-
 	request.execute(
 		&schema,
 		&Context {
-			connection: context,
+			connection : context,
 		},
 	)
 }
@@ -36,15 +35,14 @@ pub fn get_graphql_handler(
 #[post("/graphql", data = "<request>")]
 
 pub fn post_graphql_handler(
-	context: PrimaryDb,
-	request: juniper_rocket::GraphQLRequest,
-	schema: State<Schema>,
+	context : PrimaryDb,
+	request : juniper_rocket::GraphQLRequest,
+	schema : State<Schema>,
 ) -> juniper_rocket::GraphQLResponse {
-
 	request.execute(
 		&schema,
 		&Context {
-			connection: context,
+			connection : context,
 		},
 	)
 }

@@ -1,8 +1,10 @@
+use crate::db::FromDoc;
 use juniper::{GraphQLEnum, ID};
 use mongodb::{oid::ObjectId, Document};
 use reqwest::header;
 use serde::Deserialize;
 
+#[derive(Clone, Debug)]
 pub struct Order {
 	pub id :       ID,
 	pub quantity : i32,
@@ -10,10 +12,11 @@ pub struct Order {
 	pub user :     User,
 	pub method :   CollectionMethod,
 	pub postage :  Option<Postage>,
+	pub payment :  Option<Payment>,
 }
 
-impl Order {
-	pub fn from_doc(item : Document) -> Self {
+impl FromDoc for Order {
+	fn from_doc(item : Document) -> Self {
 		Self {
 			id :       Self::doc_get_id(&item),
 			quantity : Self::doc_get_quantity(&item),
@@ -21,9 +24,12 @@ impl Order {
 			address :  Self::doc_get_address(&item),
 			method :   Self::doc_get_method(&item),
 			postage :  Self::doc_get_postage(&item),
+			payment :  Self::doc_get_payment(&item),
 		}
 	}
+}
 
+impl Order {
 	pub fn doc_get_id(item : &Document) -> ID {
 		ID::from(match item.get_object_id("_id") {
 			Ok(oid) => oid.to_string(),
@@ -64,6 +70,55 @@ impl Order {
 			Ok(1) => CollectionMethod::Pickup,
 			Ok(0) | _ => CollectionMethod::Post,
 		}
+	}
+
+	pub fn doc_get_payment(item : &Document) -> Option<Payment> {
+		match item.get_document("payment") {
+			Ok(d) => Some(Payment::from_doc(d.to_owned())),
+			_ => None,
+		}
+	}
+}
+
+#[derive(Clone, Debug)]
+pub struct Payment {
+	pub stripe : Option<PaymentStripe>,
+}
+
+impl Payment {
+	pub fn from_doc(item : Document) -> Self {
+		Self {
+			stripe : Self::doc_get_stripe(&item),
+		}
+	}
+
+	pub fn doc_get_stripe(item : &Document) -> Option<PaymentStripe> {
+		match item.get_document("stripe") {
+			Ok(d) => Some(PaymentStripe::from_doc(d.to_owned())),
+			_ => None,
+		}
+	}
+}
+
+#[derive(Clone, Debug)]
+pub struct PaymentStripe {
+	pub pi :            String,
+	pub client_secret : Option<String>,
+}
+
+impl PaymentStripe {
+	pub fn from_doc(item : Document) -> Self {
+		Self {
+			pi :            Self::doc_get_pi(&item),
+			client_secret : None,
+		}
+	}
+
+	pub fn doc_get_pi(item : &Document) -> String {
+		String::from(match item.get_str("pi") {
+			Ok(d) => d,
+			_ => "",
+		})
 	}
 }
 
@@ -171,36 +226,26 @@ impl Address {
 
 #[derive(Clone, Debug)]
 pub struct Postage {
-	pub typ :   String,
-	pub price : f64,
+	pub code : String,
 }
 
 impl Postage {
 	pub fn default() -> Self {
 		Self {
-			typ :   String::from(""),
-			price : 0.0,
+			code : String::from(""),
 		}
 	}
 
 	pub fn from_doc(item : Document) -> Self {
 		Self {
-			typ :   Self::doc_get_type(&item),
-			price : Self::doc_get_price(&item),
+			code : Self::doc_get_code(&item),
 		}
 	}
 
-	pub fn doc_get_type(item : &Document) -> String {
-		match item.get_str("type") {
+	pub fn doc_get_code(item : &Document) -> String {
+		match item.get_str("code") {
 			Ok(c) => String::from(c),
 			_ => String::from(""),
-		}
-	}
-
-	pub fn doc_get_price(item : &Document) -> f64 {
-		match item.get_f64("price") {
-			Ok(c) => c,
-			_ => 0.0,
 		}
 	}
 }
@@ -241,6 +286,7 @@ pub struct PostDeliveryOptions {
 
 pub struct PostDeliveryOption {
 	pub name :  String,
+	pub code :  String,
 	pub price : f64,
 }
 
@@ -262,12 +308,12 @@ impl PostDeliveryOption {
 		let body : PostPrices = match client
 			.get("https://digitalapi.auspost.com.au/postage/parcel/domestic/service.json")
 			.query(&[
-				("from_postcode", "2000"),
+				("from_postcode", "2077"),
 				("to_postcode", &postcode.to_string()),
 				("length", "22"),
 				("width", "16"),
 				("height", "7.7"),
-				("weight", &(quantity as f64 * 0.2).to_string()),
+				("weight", &(quantity as f64 * 0.1).to_string()),
 			])
 			.send()
 		{
@@ -282,6 +328,7 @@ impl PostDeliveryOption {
 			.map(|serv| PostDeliveryOption::from_api_service(serv))
 			.collect())
 	}
+
 	fn from_api_service(service : &PostPricesService) -> Self {
 		Self {
 			name :  service.name.to_owned(),
@@ -289,6 +336,7 @@ impl PostDeliveryOption {
 				Some(p) => p.parse::<f64>().unwrap(),
 				None => 0.0,
 			},
+			code :  service.code.to_owned(),
 		}
 	}
 }
